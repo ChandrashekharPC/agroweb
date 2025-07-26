@@ -113,7 +113,11 @@ document.addEventListener('DOMContentLoaded', function() {
             loggedInUser = { username, ...users[username] };
             errorMessage.classList.add('hidden');
             updateUI();
-            showPage('homepage');
+            
+            // --- FIX: Redirect to the controls dashboard on successful login ---
+            showPage('blynk-dashboard-page');
+            loadControlsDashboard();
+
         } else {
             errorMessage.textContent = 'Invalid username or password.';
             errorMessage.classList.remove('hidden');
@@ -144,7 +148,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- BLYNK DASHBOARD LOGIC ---
     let blynkInitialized = false;
     let blynkInterval;
-    **const BLYNK_AUTH_TOKEN = "JVN2yzq5VvZgS9fagsPbZus6s4FFzjAg";**
+    const BLYNK_AUTH_TOKEN = "JVN2yzq5VvZgS9fagsPbZus6s4FFzjAg";
     const BLYNK_SERVER_HOST = "blynk.cloud"; 
 
     const blynkConfig = {
