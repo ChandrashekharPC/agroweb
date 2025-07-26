@@ -144,7 +144,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // --- BLYNK DASHBOARD LOGIC ---
     let blynkInitialized = false;
     let blynkInterval;
-    const BLYNK_AUTH_TOKEN = "YOUR_BLYNK_AUTH_TOKEN"; // IMPORTANT: REPLACE THIS
+    **const BLYNK_AUTH_TOKEN = "JVN2yzq5VvZgS9fagsPbZus6s4FFzjAg";**
     const BLYNK_SERVER_HOST = "blynk.cloud"; 
 
     const blynkConfig = {
