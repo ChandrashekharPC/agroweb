@@ -4,13 +4,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const loginPage = document.getElementById('login-page');
     const weatherDashboardPage = document.getElementById('weather-dashboard-page');
     const blynkDashboardPage = document.getElementById('blynk-dashboard-page');
+    const sensorReadingsPage = document.getElementById('sensor-readings-page');
+    const sensorDetailPage = document.getElementById('sensor-detail-page');
 
     // Buttons and links
     const loginButtons = document.querySelectorAll('.login-btn');
     const backToHomeBtn = document.getElementById('back-to-home-btn');
     const backToHomeFromDashButtons = document.querySelectorAll('.back-to-home-from-dash');
-    const logoutButton = document.getElementById('logout-button');
-    const blynkLogoutButton = document.getElementById('blynk-logout-button');
+    const backToSensorsBtn = document.getElementById('back-to-sensors-btn');
+    const logoutButtons = document.querySelectorAll('#logout-button, #blynk-logout-button, #sensors-logout-button, #header-logout-btn');
     const navLinks = document.querySelectorAll('.nav-link');
     
     // Forms and dynamic content
@@ -19,9 +21,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const mainHeaderAvatar = document.getElementById('main-header-avatar');
     const avatarButton = document.getElementById('avatar-button');
     const logoutDropdown = document.getElementById('logout-dropdown');
-    const headerLogoutBtn = document.getElementById('header-logout-btn');
     const dashboardContent = document.getElementById('dashboard-content');
     const dashboardLoader = document.getElementById('dashboard-loader');
+    const sensorDetailTitle = document.getElementById('sensor-detail-title');
     
     // --- MOCK USER DATA ---
     const users = {
@@ -32,10 +34,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // --- UI & NAVIGATION LOGIC ---
     function showPage(pageId) {
-        homepage.classList.add('hidden');
-        loginPage.classList.add('hidden');
-        weatherDashboardPage.classList.add('hidden');
-        blynkDashboardPage.classList.add('hidden');
+        [homepage, loginPage, weatherDashboardPage, blynkDashboardPage, sensorReadingsPage, sensorDetailPage].forEach(p => p.classList.add('hidden'));
         document.getElementById(pageId).classList.remove('hidden');
     }
 
@@ -44,19 +43,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const heroLoginBtn = document.querySelector('.hero-section .login-btn');
 
         if (loggedInUser) {
-            // --- Logged-in state ---
             headerLoginBtn.classList.add('hidden');
             mainHeaderAvatar.classList.remove('hidden');
-            mainHeaderAvatar.style.display = 'block'; // Use block for the relative container
+            mainHeaderAvatar.style.display = 'block';
             const avatarImg = mainHeaderAvatar.querySelector('img');
             const initial = loggedInUser.username === 'admin' ? 'A' : 'U';
             avatarImg.src = `https://placehold.co/40x40/34D399/FFFFFF?text=${initial}`;
-            heroLoginBtn.textContent = 'View Dashboard';
+            heroLoginBtn.textContent = 'View Controls';
         } else {
-            // --- Logged-out state ---
             headerLoginBtn.classList.remove('hidden');
             mainHeaderAvatar.classList.add('hidden');
-            logoutDropdown.classList.add('hidden'); // Ensure dropdown is hidden on logout
+            logoutDropdown.classList.add('hidden');
             heroLoginBtn.textContent = 'Login to Dashboard';
         }
     }
@@ -67,7 +64,7 @@ document.addEventListener('DOMContentLoaded', function() {
             e.preventDefault();
             if (loggedInUser) {
                 showPage('blynk-dashboard-page');
-                loadBlynkDashboard();
+                loadControlsDashboard();
             } else {
                 showPage('login-page');
             }
@@ -85,6 +82,10 @@ document.addEventListener('DOMContentLoaded', function() {
             showPage('homepage');
         });
     });
+    
+    backToSensorsBtn.addEventListener('click', () => {
+        showPage('sensor-readings-page');
+    });
 
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
@@ -95,7 +96,8 @@ document.addEventListener('DOMContentLoaded', function() {
             } else if (loggedInUser) {
                 showPage(target);
                 if (target === 'weather-dashboard-page') loadWeatherDashboard();
-                if (target === 'blynk-dashboard-page') loadBlynkDashboard();
+                if (target === 'blynk-dashboard-page') loadControlsDashboard();
+                if (target === 'sensor-readings-page') loadSensorsDashboard();
             } else {
                 showPage('login-page');
             }
@@ -118,241 +120,261 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
-    function handleLogout() {
+    function handleLogout(e) {
+        e.preventDefault();
         loggedInUser = null;
+        if(blynkInterval) clearInterval(blynkInterval);
+        blynkInitialized = false;
         updateUI();
         showPage('homepage');
     }
 
-    logoutButton.addEventListener('click', handleLogout);
-    blynkLogoutButton.addEventListener('click', handleLogout);
-    headerLogoutBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        handleLogout();
-    });
+    logoutButtons.forEach(btn => btn.addEventListener('click', handleLogout));
     
     avatarButton.addEventListener('click', () => {
         logoutDropdown.classList.toggle('hidden');
     });
 
-    // Close dropdown if clicked outside
     window.addEventListener('click', function(e) {
         if (!mainHeaderAvatar.contains(e.target)) {
             logoutDropdown.classList.add('hidden');
         }
     });
 
-
-    // --- WEATHER DASHBOARD LOGIC ---
-    function loadWeatherDashboard() {
-         // Geolocation options with a timeout
-        const geoOptions = {
-            timeout: 8000 // 8 seconds
-        };
-
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const { latitude, longitude } = position.coords;
-                fetchAndBuildDashboard(latitude, longitude);
-            },
-            (error) => {
-                // Log a more specific error message and use a fallback
-                console.error("Geolocation error:", error.message);
-                document.getElementById('loader-message').textContent = 'Could not get location. Loading default forecast...';
-                fetchAndBuildDashboard(13.03, 74.88); // Default to Tenkamijar, IN
-            },
-            geoOptions
-        );
-    }
-
-    async function fetchAndBuildDashboard(lat, lon) {
-         const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max&timezone=auto`;
-        try {
-            const response = await fetch(apiUrl);
-            const weatherData = await response.json();
-            
-            const geoUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
-            const geoResponse = await fetch(geoUrl);
-            const geoData = await geoResponse.json();
-            const locationName = `${geoData.address.city || geoData.address.town || 'Unknown'}, ${geoData.address.country}`;
-            
-            buildDashboardHTML(locationName);
-            const processedData = processWeatherData(weatherData);
-            populateWeekForecast(processedData);
-            updateDashboardUI(processedData[0]);
-            document.querySelector(`.day-forecast-card[data-index='0']`).classList.add('active');
-
-            dashboardLoader.classList.add('hidden');
-            dashboardContent.classList.remove('hidden');
-
-        } catch (error) {
-            console.error("Failed to fetch data:", error);
-            document.getElementById('loader-message').textContent = 'Failed to load weather data.';
-        }
-    }
-    function processWeatherData(data) {
-         return data.daily.time.map((date, i) => {
-            return {
-                date: new Date(date),
-                temp: Math.round(data.daily.temperature_2m_max[i]),
-                code: data.daily.weather_code[i],
-                wind: data.current.wind_speed_10m,
-                uv: data.daily.uv_index_max[i],
-                humidity: data.current.relative_humidity_2m,
-                feels_like: Math.round(data.current.apparent_temperature),
-                sunrise: new Date(data.daily.sunrise[i]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-                sunset: new Date(data.daily.sunset[i]).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            };
-        });
-    }
-    function buildDashboardHTML(locationName) {
-        dashboardContent.innerHTML = `
-            <div class="lg:col-span-1 space-y-8">
-                <div class="card p-6">
-                    <p class="text-gray-400">${locationName}</p>
-                    <h2 class="text-lg font-semibold text-white">${loggedInUser.name}</h2>
-                    <div class="flex items-center my-4">
-                        <div id="weather-icon" class="w-24 h-24 mr-4"></div>
-                        <div>
-                            <p class="text-6xl font-bold text-white"><span id="weather-temp">--</span>°C</p>
-                            <p class="text-lg text-gray-300" id="weather-condition">--</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="lg:col-span-2 space-y-8">
-                <div id="week-forecast-container" class="grid grid-cols-4 md:grid-cols-7 gap-4"></div>
-                <div>
-                    <h3 class="font-semibold text-white text-xl mb-4">Today's overview</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                         <div class="card p-6"><h4 class="text-gray-400 mb-2">Wind Status</h4><p class="text-3xl font-bold text-white mb-4"><span id="wind-status-value">--</span> km/h</p></div>
-                         <div class="card p-6"><h4 class="text-gray-400 mb-2">UV Index</h4><p class="text-3xl font-bold text-white" id="uv-index-value">--</p></div>
-                         <div class="card p-6"><h4 class="text-gray-400 mb-2">Sunrise & Sunset</h4><p id="sunrise-time">--:--</p><p id="sunset-time">--:--</p></div>
-                         <div class="card p-6"><h4 class="text-gray-400 mb-2">Humidity</h4><p class="text-3xl font-bold text-white mb-4"><span id="humidity-value">--</span>%</p></div>
-                         <div class="card p-6"><h4 class="text-gray-400 mb-2">Feels like</h4><p class="text-3xl font-bold text-white mb-4"><span id="feels-like-value">--</span>°</p></div>
-                    </div>
-                </div>
-            </div>`;
-    }
-    function updateDashboardUI(data) {
-        const weatherInfo = getWeatherDescription(data.code);
-        document.getElementById('weather-icon').innerHTML = weatherInfo.icon;
-        document.getElementById('weather-temp').textContent = data.temp;
-        document.getElementById('weather-condition').textContent = weatherInfo.text;
-        document.getElementById('wind-status-value').textContent = data.wind.toFixed(1);
-        document.getElementById('uv-index-value').textContent = data.uv.toFixed(1);
-        document.getElementById('sunrise-time').textContent = `Sunrise: ${data.sunrise}`;
-        document.getElementById('sunset-time').textContent = `Sunset: ${data.sunset}`;
-        document.getElementById('humidity-value').textContent = data.humidity;
-        document.getElementById('feels-like-value').textContent = data.feels_like;
-        
-        const now = new Date(data.date);
-        document.getElementById('dashboard-date').textContent = now.toLocaleString('default', { month: 'long', year: 'numeric' });
-        document.getElementById('dashboard-day-date').textContent = now.toLocaleString('default', { weekday: 'long', month: 'long', day: 'numeric' });
-    }
-    function populateWeekForecast(weeklyData) {
-        const container = document.getElementById('week-forecast-container');
-        container.innerHTML = '';
-        weeklyData.forEach((data, index) => {
-            const card = document.createElement('div');
-            card.className = 'day-forecast-card p-4 text-center';
-            card.dataset.index = index;
-            card.innerHTML = `
-                <p class="font-semibold text-gray-400">${data.date.toLocaleDateString('en-US', { weekday: 'short' })}</p>
-                <div class="w-12 h-12 mx-auto my-2">${getWeatherDescription(data.code).icon}</div>
-                <p class="font-bold text-white text-xl">${data.temp}°</p>`;
-            container.appendChild(card);
-        });
-        
-        container.addEventListener('click', function(e) {
-            const card = e.target.closest('.day-forecast-card');
-            if (!card) return;
-            document.querySelectorAll('.day-forecast-card').forEach(c => c.classList.remove('active'));
-            card.classList.add('active');
-            updateDashboardUI(weeklyData[parseInt(card.dataset.index)]);
-        });
-    }
-    const weatherIcons = {
-        'Sunny': `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="#FFC700" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`,
-        'Partly Cloudy': `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="#A0AEC0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path><path d="M22 10a5 5 0 0 0-5-5h-1.26a8 8 0 0 0-14.48 4.5A5.5 5.5 0 0 0 6.5 20H18"></path></svg>`,
-        'Cloudy': `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="#A0AEC0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>`,
-        'Rain': `<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="100%" viewBox="0 0 24 24" fill="none" stroke="#63B3ED" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="16" y1="13" x2="16" y2="21"></line><line x1="8" y1="13" x2="8" y2="21"></line><line x1="12" y1="15" x2="12" y2="23"></line><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"></path></svg>`,
-    };
-    function getWeatherDescription(code) {
-        const descriptions = {
-            0: { icon: weatherIcons['Sunny'], text: 'Clear sky' }, 1: { icon: weatherIcons['Partly Cloudy'], text: 'Mainly clear' },
-            2: { icon: weatherIcons['Partly Cloudy'], text: 'Partly cloudy' }, 3: { icon: weatherIcons['Cloudy'], text: 'Overcast' },
-            61: { icon: weatherIcons['Rain'], text: 'Slight rain' }, 80: { icon: weatherIcons['Rain'], text: 'Rain showers' }
-        };
-        return descriptions[code] || { icon: weatherIcons['Cloudy'], text: 'Cloudy' };
-    }
-
-
     // --- BLYNK DASHBOARD LOGIC ---
     let blynkInitialized = false;
-    function loadBlynkDashboard() {
-        if (blynkInitialized) return;
-        
-        const BLYNK_AUTH_TOKEN = "YOUR_BLYNK_AUTH_TOKEN"; 
-        const BLYNK_SERVER_HOST = "blynk.cloud"; 
+    let blynkInterval;
+    const BLYNK_AUTH_TOKEN = "YOUR_BLYNK_AUTH_TOKEN"; // IMPORTANT: REPLACE THIS
+    const BLYNK_SERVER_HOST = "blynk.cloud"; 
 
-        const switches = [
+    const blynkConfig = {
+        switches: [
             { label: 'Motor Switch', pin: 'V1', offText: 'OFF', onText: 'ON' },
             { label: 'Light Switch', pin: 'V2', offText: 'OFF', onText: 'ON' },
             { label: 'Fire Kill Switch', pin: 'V3', offText: 'OFF', onText: 'ON' },
             { label: 'Alarm Switch', pin: 'V4', offText: 'OFF', onText: 'ON' },
-        ];
-        const statuses = [
+        ],
+        statuses: [
             { label: 'Motor ON', pin: 'V5' }, { label: 'Motor OFF', pin: 'V6' },
             { label: 'Voltage Alert', pin: 'V7' }, { label: 'Light', pin: 'V8' },
             { label: 'Gas', pin: 'V9' }, { label: 'Speaker Status', pin: 'V10' },
             { label: 'Rain LED', pin: 'V11' }, { label: 'Motion', pin: 'V12' },
-        ];
-        const gauges = [
-            { label: 'Shallow Moisture', pin: 'V13', min: 1, max: 4095, unit: '' },
-            { label: 'Deeper Moisture', pin: 'V14', min: 1, max: 4095, unit: '' },
-            { label: 'Mid Moisture', pin: 'V15', min: 1, max: 4095, unit: '' },
+        ],
+        gauges: [
+            { label: 'Shallow Moisture', pin: 'V13', min: 1, max: 4095, unit: 'ADC' },
+            { label: 'Deeper Moisture', pin: 'V14', min: 1, max: 4095, unit: 'ADC' },
+            { label: 'Mid Moisture', pin: 'V15', min: 1, max: 4095, unit: 'ADC' },
             { label: 'Gas Level', pin: 'V16', min: 0, max: 100, unit: '%' },
             { label: 'Voltage', pin: 'V17', min: 0, max: 44, unit: 'V' },
             { label: 'Water level', pin: 'V18', min: 0, max: 100, unit: '%' },
             { label: 'Temperature', pin: 'V19', min: 0, max: 150, unit: '°C' },
             { label: 'Humidity', pin: 'V20', min: 0, max: 100, unit: '%' },
-        ];
+        ]
+    };
 
+    function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
+        const angleInRadians = (angleInDegrees - 90) * Math.PI / 180.0;
+        return {
+            x: centerX + (radius * Math.cos(angleInRadians)),
+            y: centerY + (radius * Math.sin(angleInRadians))
+        };
+    }
+
+    function describeArc(x, y, radius, startAngle, endAngle) {
+        const start = polarToCartesian(x, y, radius, endAngle);
+        const end = polarToCartesian(x, y, radius, startAngle);
+        const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+        return ["M", start.x, start.y, "A", radius, radius, 0, largeArcFlag, 0, end.x, end.y].join(" ");
+    }
+
+    function updateBlynkGauge(pin, value, min, max) {
+        const needle = document.getElementById(`needle-${pin}`);
+        const valueText = document.getElementById(`gauge-value-text-${pin}`);
+        if (!needle || !valueText) return;
+
+        const clampedValue = Math.max(min, Math.min(max, value));
+        const percentage = (max - min) > 0 ? (clampedValue - min) / (max - min) : 0;
+        const angle = -120 + (percentage * 240); // Range from -120 to +120 degrees
+
+        needle.setAttribute('transform', `rotate(${angle} 100 100)`);
+        valueText.textContent = clampedValue.toFixed(1);
+    }
+
+    async function refreshBlynkData() {
+        if (BLYNK_AUTH_TOKEN === "YOUR_BLYNK_AUTH_TOKEN") {
+            console.warn("Blynk Auth Token not set. Using random data for demo.");
+            return;
+        }
+        const allPins = [...blynkConfig.switches, ...blynkConfig.statuses, ...blynkConfig.gauges].map(d => d.pin);
+        const pinParams = allPins.map(pin => `${pin}`).join('&');
+        
+        try {
+            const url = `https://${BLYNK_SERVER_HOST}/external/api/get?token=${BLYNK_AUTH_TOKEN}&${pinParams}`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Blynk API error: ${response.statusText}`);
+            const data = await response.json();
+
+            blynkConfig.switches.forEach(s => {
+                const val = data[s.pin];
+                const checkbox = document.getElementById(`switch-${s.pin}`);
+                const text = document.getElementById(`switch-text-${s.pin}`);
+                if (checkbox && text) {
+                    checkbox.checked = val == 1;
+                    text.textContent = val == 1 ? s.onText : s.offText;
+                }
+            });
+            blynkConfig.statuses.forEach(s => {
+                const dot = document.getElementById(`status-${s.pin}`);
+                if (dot) dot.classList.toggle('active', data[s.pin] == 1);
+            });
+            blynkConfig.gauges.forEach(g => {
+                updateBlynkGauge(g.pin, data[g.pin], g.min, g.max);
+            });
+
+        } catch (error) {
+            console.error("Failed to fetch from Blynk:", error);
+            if(blynkInterval) clearInterval(blynkInterval);
+        }
+    }
+
+    async function updateBlynkPin(pin, value) {
+        if (BLYNK_AUTH_TOKEN === "YOUR_BLYNK_AUTH_TOKEN") return;
+         try {
+            const url = `https://${BLYNK_SERVER_HOST}/external/api/update?token=${BLYNK_AUTH_TOKEN}&${pin}=${value}`;
+            await fetch(url);
+        } catch (error) {
+            console.error(`Failed to update Blynk pin ${pin}:`, error);
+        }
+    }
+    
+    function initBlynkIfNeeded() {
+        if (blynkInitialized) return;
+        if (blynkInterval) clearInterval(blynkInterval);
+        blynkInterval = setInterval(refreshBlynkData, 5000);
+        refreshBlynkData();
+        blynkInitialized = true;
+    }
+
+    function loadControlsDashboard() {
         const switchContainer = document.getElementById('switch-container');
         const statusContainer = document.getElementById('status-container');
-        const gaugeContainer = document.getElementById('gauge-container');
-        
-        // Clear containers before generating
-        switchContainer.innerHTML = '';
-        statusContainer.innerHTML = '';
-        gaugeContainer.innerHTML = '';
+        if (switchContainer.innerHTML !== '') return; // Already built
 
-        switches.forEach(s => {
+        blynkConfig.switches.forEach(s => {
             const card = document.createElement('div');
             card.className = 'blynk-card flex-row justify-between';
             card.innerHTML = `<div class="flex items-center"><span class="font-bold text-lg">${s.label}</span></div><div class="flex items-center space-x-3"><label class="toggle-switch"><input type="checkbox" id="switch-${s.pin}" data-pin="${s.pin}"><span class="slider"></span></label><span id="switch-text-${s.pin}" class="font-bold text-lg w-12 text-right">${s.offText}</span></div>`;
             switchContainer.appendChild(card);
         });
-        statuses.forEach(s => {
+        blynkConfig.statuses.forEach(s => {
             const card = document.createElement('div');
             card.className = 'blynk-card';
             card.innerHTML = `<span class="font-semibold">${s.label}</span><div id="status-${s.pin}" class="status-dot mt-2"></div>`;
             statusContainer.appendChild(card);
         });
-        gauges.forEach(g => {
+        
+        switchContainer.addEventListener('change', (event) => {
+            if (event.target.type === 'checkbox') {
+                const pin = event.target.dataset.pin;
+                const value = event.target.checked ? 1 : 0;
+                updateBlynkPin(pin, value);
+            }
+        });
+        initBlynkIfNeeded();
+    }
+
+    function loadSensorsDashboard() {
+        const gaugeContainer = document.getElementById('gauge-container');
+        if (gaugeContainer.innerHTML !== '') return; // Already built
+
+        blynkConfig.gauges.forEach(g => {
             const card = document.createElement('div');
-            card.className = 'blynk-card';
-            const radius = 60;
-            const circumference = 2 * Math.PI * radius;
-            card.innerHTML = `<div class="gauge-container"><svg class="gauge-svg" viewBox="0 0 150 150"><circle class="gauge-bg" cx="75" cy="75" r="${radius}"></circle><circle id="gauge-fill-${g.pin}" class="gauge-fill" cx="75" cy="75" r="${radius}" stroke-dasharray="${circumference}" stroke-dashoffset="${circumference}"></circle></svg><div id="gauge-text-${g.pin}" class="gauge-text">--</div><div class="gauge-min-max"><span>${g.min}</span><span>${g.max}</span></div></div><div class="gauge-label">${g.label}</div>`;
+            card.className = 'light-card gauge-card items-center justify-center p-4 rounded-lg';
+            card.dataset.pin = g.pin;
+            card.dataset.label = g.label;
+            card.innerHTML = `
+                <div class="relative w-full" style="padding-top: 100%;">
+                    <svg viewBox="0 0 200 200" class="absolute top-0 left-0 w-full h-full">
+                        <defs>
+                            <linearGradient id="blueGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#3b82f6" />
+                                <stop offset="100%" style="stop-color:#60a5fa" />
+                            </linearGradient>
+                        </defs>
+                        <path d="${describeArc(100, 100, 80, -120, 120)}" stroke="#e5e7eb" stroke-width="12" fill="none"></path>
+                        <path d="${describeArc(100, 100, 80, -120, 60)}" stroke="url(#blueGradient)" stroke-width="12" fill="none"></path>
+                        <path d="${describeArc(100, 100, 90, 60, 80)}" stroke="#22c55e" stroke-width="6" fill="none"></path>
+                        
+                        <text x="50" y="170" text-anchor="middle" fill="#4b5563" font-size="18">${g.min}</text>
+                        <text x="150" y="170" text-anchor="middle" fill="#4b5563" font-size="18">${g.max}</text>
+                        
+                        <text id="gauge-value-text-${g.pin}" x="100" y="120" text-anchor="middle" fill="#1f2937" font-size="40" font-weight="bold">--</text>
+                        <text x="100" y="145" text-anchor="middle" fill="#6b7280" font-size="16">${g.unit}</text>
+                        
+                        <g id="needle-${g.pin}" transform="rotate(-120 100 100)">
+                            <path d="M 100 25 L 95 100 L 105 100 Z" fill="#4b5563" />
+                            <circle cx="100" cy="100" r="8" fill="#4b5563" />
+                        </g>
+                    </svg>
+                </div>
+                <span class="font-semibold mt-2 text-center text-gray-800">${g.label}</span>`;
             gaugeContainer.appendChild(card);
         });
-        
-        blynkInitialized = true;
-        console.log("Blynk Dashboard Initialized.");
-        // Add event listeners and data fetching logic for Blynk here...
+
+        gaugeContainer.addEventListener('click', (event) => {
+            const card = event.target.closest('.gauge-card');
+            if (card) {
+                const { pin, label } = card.dataset;
+                showSensorDetailPage(pin, label);
+            }
+        });
+        initBlynkIfNeeded();
     }
+    
+    // --- Sensor Detail Page Logic ---
+    let sensorChart = null;
+    function showSensorDetailPage(pin, label) {
+        sensorDetailTitle.textContent = `${label} Timeline`;
+        showPage('sensor-detail-page');
+
+        const labels = [];
+        const data = [];
+        for (let i = 10; i >= 0; i--) {
+            const time = new Date(Date.now() - i * 5 * 60 * 1000);
+            labels.push(time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+            data.push(Math.random() * 100);
+        }
+
+        const ctx = document.getElementById('sensor-chart').getContext('2d');
+        if (sensorChart) {
+            sensorChart.destroy();
+        }
+        sensorChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: label,
+                    data: data,
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.2)',
+                    fill: true,
+                    tension: 0.3
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { beginAtZero: true, ticks: { color: 'white' } },
+                    x: { ticks: { color: 'white' } }
+                },
+                plugins: { legend: { labels: { color: 'white' } } }
+            }
+        });
+    }
+
+    // --- Weather Dashboard Functions (placeholders) ---
+    function loadWeatherDashboard(){}
     
     // Mobile menu toggle
     const mobileMenuButton = document.getElementById('mobile-menu-button');
